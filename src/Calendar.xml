@@ -168,7 +168,7 @@
         <propertyGroup caption="Date Picker">
             <propertyGroup caption="When the calendar is used as a date picker">
                 <property key="datesSelected" type="datasource" isList="true" required="false">
-                    <caption>Dates Selected</caption>
+                    <caption>Data Source</caption>
                     <description>A list of entities for the selected dates the user has chosen.</description>
                 </property>
                 <property key="selectedDateAttr" type="attribute" dataSource="datesSelected" required="false">

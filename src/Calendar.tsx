@@ -1,14 +1,42 @@
 // main entry point for the widget; all props will come in from here.
 import classnames from "classnames";
-import { ReactElement, createElement, useMemo, useEffect } from "react";
+import { ReactElement, createElement, useEffect, useMemo } from "react";
 import { Calendar, dateFnsLocalizer } from "react-big-calendar";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 import { CalendarContainerProps } from "../typings/CalendarProps";
-// import { constructWrapperStyle } from "./utils/utils";
 import { format, startOfWeek, startOfMonth, endOfMonth } from 'date-fns';  
 import * as dateFns from "date-fns";
 
 
+// // Define calendar event attribute enum types
+// enum CalEventType {
+//     All = "All",
+//     Overnight = "Overnight",
+//     Transit = "Transit",
+//     Timeslot = "Timeslot",
+//     Activity = "Activity",
+//     Competition = "Competition"
+// }
+
+// // Set default persistent calendar event attribute
+// const DEFAULT_CALENDAR_EVENT_TYPE = CalEventType.All
+
+// Define the CalEvent
+interface CalEvent {
+    description: string;
+    start: Date;
+    end: Date;
+    allDay: boolean;
+    display: string;
+    // optional: 
+    icons?: string[];
+    fontColor?: string;
+    backgroundColor?: string;
+    header?: string;
+    type?: string;
+}
+
+// Function for building a custom week event
 const CustomWeekEvent = ({ event }: { event: CalEvent }) => {
      const { header, allDay, description } = event;
     return allDay ? (
@@ -84,8 +112,6 @@ const CustomMonthEvent = ({ event, onShowMoreClick }: CustomMonthEventProps) => 
     return null;
 };
 
-
-
 function groupIconEventsByDay(events: CalEvent[], view: string): CalEvent[] {
     if (view !== "month") return events;
 
@@ -127,20 +153,6 @@ const localizer = dateFnsLocalizer({
     locales: {}
 });
 
-interface CalEvent {
-    description: string;
-    start: Date;
-    end: Date;
-    allDay: boolean;
-    display: string;
-    // optional: 
-    icons?: string[];
-    fontColor?: string;
-    backgroundColor?: string;
-    header?: string;
-    type?: string;
-}
-
 // icons need to show on each day of a multiday event 
 function expandMultiDayEvents(events: CalEvent[], view: string): CalEvent[] {
     const expandedEvents: CalEvent[] = [];
@@ -180,19 +192,15 @@ function expandMultiDayEvents(events: CalEvent[], view: string): CalEvent[] {
     return expandedEvents;
 }
 
-
-export default function MxCalendar(props: CalendarContainerProps): ReactElement {
-    const { class: className } = props;
-
-    // currentView will be "month" if "quarter" is selected 
-    const rawView = props.viewAttribute?.value ?? props.defaultView;
-    const currentView = rawView === "quarter" ? "month" : rawView;
-
-    // const wrapperStyle = constructWrapperStyle(props);
+// Helper to map Mendix objects to CalEvents
+function mapCalendarEvents(props: CalendarContainerProps): CalEvent[] {
+    if (!props || !Array.isArray(props)) return [];
 
     const items = props.databaseDataSource?.items ?? [];
+    if (items.length === 0) return [];
 
-    const rawEvents: CalEvent[] = items.map(item => {
+    // Map each item to a CalEvent
+    return  items.map(item => {
         const header =
             props.header === "attribute" && props.headerAttribute
                 ? (props.headerAttribute.get(item).value ?? "")
@@ -218,26 +226,107 @@ export default function MxCalendar(props: CalendarContainerProps): ReactElement 
 
         return { description, start, end, fontColor, backgroundColor, allDay, display, header, type }; 
     });
+}
+
+// // Helper function to determine if a date is within the selected quarter range
+// function isInQuarter(args: { props: CalendarContainerProps, date: Date }): boolean {
+//     const rawQuarterStart = args.props.quarterStart?.value ?? new Date();
+//     const rawQuarterEnd = args.props.quarterEnd?.value ?? new Date();
+
+//     const quarterStart = startOfMonth(rawQuarterStart);
+//     const quarterEnd = endOfMonth(rawQuarterEnd);
+
+//     return args.date >= quarterStart && args.date <= quarterEnd;
+// }
+
+
+// let calendarPropsRef: React.RefObject<CalendarContainerProps>;
+
+
+// // Wrapper component to hide dates outside the quarter range
+// function customDateCellWrapper(wrapperProps: any ): ReactElement {
+//     const props = calendarPropsRef?.current
+//     const { children, value } = wrapperProps;
+
+//     if (!isInQuarter({ props: wrapperProps, date: value })) {
+//         return <div style={{ visibility: "hidden", height: "100%" }}>{children}</div>;
+//     }
+
+//     return children;
+// };
+
+
+
+// Helper function to style events based on view and event properties
+function eventPropGetter(args: { currentView: string, event: CalEvent }): { style: React.CSSProperties } {
+    const shouldApplyBackground = args.currentView === "week" ||
+        (args.currentView === "month" && args.event.display === "eventinfo");
+
+    return {
+        style: {
+            backgroundColor: shouldApplyBackground ? args.event.backgroundColor : "transparent",
+            color: args.event.fontColor
+        }
+    };
+};
+
+// Helper function to build a map of flags for quick lookup
+function mapFlagList(props: CalendarContainerProps): Map<string, string> {
+    const flagList = props.flags?.items ?? [];
+    const flagMap = new Map<string, string>();
+
+    for (const item of flagList) {
+        const date = props.flagDateAttribute?.get(item)?.value;
+        const name = props.flagNameAttribute?.get(item)?.value;
+        if (date && name) {
+            const dayKey = date.toDateString();
+            flagMap.set(dayKey, name ?? "default-flag");
+        }
+    }
+
+    return flagMap;
+}
+
+// // Helper function to handle "show more" clicks
+// function onShowMore(args: {
+//         props: CalendarContainerProps,
+//         _events: CalEvent[],
+//         date: Date
+//     }): false {
+
+//     if (args.props.clickedDate?.setValue) {
+//         args.props.clickedDate.setValue(args.date);
+//     }
+
+//     if (args.props.onClickShowMore?.canExecute) {
+//         args.props.onClickShowMore.execute();
+//     }
+
+//     if (args.props.viewAttribute?.setValue) {
+//         args.props.viewAttribute.setValue("month");
+//     }
+
+//     return false;
+// }
+
+
+// The main widget component
+export default function MxCalendar(props: CalendarContainerProps): ReactElement {
+    const { class: className } = props;
+
+    // currentView will be "month" if "quarter" is selected 
+    const rawView = props.viewAttribute?.value ?? props.defaultView;
+    const currentView = rawView === "quarter" ? "month" : rawView;
+
+    const rawEvents: CalEvent[] = mapCalendarEvents(props);
 
     const expanded = expandMultiDayEvents(rawEvents, currentView);
     const events = groupIconEventsByDay(expanded, currentView);
 
     const viewsOption = ["month", "week", "quarter"] as const;
 
-    const eventPropGetter = (event: CalEvent) => {
-        const shouldApplyBackground = currentView === "week" || (currentView === "month" && event.display === "eventinfo");
-
-        return {
-            style: {
-                backgroundColor: shouldApplyBackground ? event.backgroundColor : "transparent",
-                color: event.fontColor
-            }
-        };
-    };
-
     // formats 
     const formats = useMemo(() => ({
-
         // month view; 1 letter to represent day of the week in column headers 
         weekdayFormat: (
             date: Date,
@@ -257,7 +346,6 @@ export default function MxCalendar(props: CalendarContainerProps): ReactElement 
             culture: string | undefined,
             localizer: ReturnType<typeof dateFnsLocalizer>
         ) => localizer.format(date, "HH:mm", culture), // 24-hour format, no AM/PM 
- 
     }), []);
 
     // get the selected dates list 
@@ -268,20 +356,19 @@ export default function MxCalendar(props: CalendarContainerProps): ReactElement 
         })
         .filter((date): date is Date => !!date);
 
-    // get the flags  
-    const flagList = props.flags?.items ?? [];
     // Build a map of name and day 
-    const flagMap = new Map<string, string>();
-    for (const item of flagList) {
-        const date = props.flagDateAttribute?.get(item)?.value;
-        const name = props.flagNameAttribute?.get(item)?.value;
-        if (date && name) {
-            const dayKey = date.toDateString();
-            flagMap.set(dayKey, name ?? "default-flag");
-        }
-    }
+    const flagMap = mapFlagList(props);
+    
+    const rawQuarterStart = props.quarterStart?.value ?? new Date();
+    const rawQuarterEnd = props.quarterEnd?.value ?? new Date();
 
-    // header for the week view 
+    const quarterStart = startOfMonth(rawQuarterStart);
+    const quarterEnd = endOfMonth(rawQuarterEnd);
+
+    const isInQuarter = (date: Date): boolean =>
+        date >= quarterStart && date <= quarterEnd;
+
+    // Renders custom week header with flags and today highlight
     const CustomWeekHeader = ({ date }: { date: Date }) => {
         const dayLetter = format(date, 'EEEEE'); // first letter of the weekday, ie. "M"
         const dayNumber = format(date, 'd');     // day of the month, ie. "3"
@@ -323,7 +410,7 @@ export default function MxCalendar(props: CalendarContainerProps): ReactElement 
         );
     };
 
-    // for the month view only 
+    // Renders custom month date header with flags and today/selected highlight
     const CustomMonthDateHeader = ({ label, date }: { label: string, date: Date }) => {
 
         if (!isInQuarter(date)) {
@@ -368,24 +455,8 @@ export default function MxCalendar(props: CalendarContainerProps): ReactElement 
         );
     };
 
-    const rawQuarterStart = props.quarterStart?.value ?? new Date();
-    const rawQuarterEnd = props.quarterEnd?.value ?? new Date();
-
-    const quarterStart = startOfMonth(rawQuarterStart);
-    const quarterEnd = endOfMonth(rawQuarterEnd);
-
-    const isInQuarter = (date: Date): boolean =>
-        date >= quarterStart && date <= quarterEnd;
-
-    const QuarterDateCellWrapper = (props: any) => {
+    const customDateCellWrapper = (props: any) => {
         const { children, value } = props;
-        // const inQuarter = isInQuarter(value);
-
-        // return (
-        //     <div className={inQuarter ? "in-quarter" : "out-of-quarter"}>
-        //         {children}
-        //     </div>
-        // );
 
         if (!isInQuarter(value)) {
             return <div style={{ visibility: "hidden", height: "100%" }}>{children}</div>;
@@ -393,7 +464,6 @@ export default function MxCalendar(props: CalendarContainerProps): ReactElement 
 
         return children;
     };
-
 
     const handleSelectSlot = (slotInfo: { start: Date; end: Date }) => {
         if (!isInQuarter(slotInfo.start)) {
@@ -433,21 +503,20 @@ export default function MxCalendar(props: CalendarContainerProps): ReactElement 
     }), []);
 
     function onShowMore(_events: CalEvent[], date: Date): false {
-    if (props.clickedDate?.setValue) {
-        props.clickedDate.setValue(date);
+        if (props.clickedDate?.setValue) {
+            props.clickedDate.setValue(date);
+        }
+
+        if (props.onClickShowMore?.canExecute) {
+            props.onClickShowMore.execute();
+        }
+
+        if (props.viewAttribute?.setValue) {
+            props.viewAttribute.setValue("month");
+        }
+
+        return false;
     }
-
-    if (props.onClickShowMore?.canExecute) {
-        props.onClickShowMore.execute();
-    }
-
-    if (props.viewAttribute?.setValue) {
-        props.viewAttribute.setValue("month");
-    }
-
-    return false;
-}
-
 
     useEffect(() => {
         const handler = (e: any) => {
@@ -455,22 +524,20 @@ export default function MxCalendar(props: CalendarContainerProps): ReactElement 
             if (!date) return;
             onShowMore([], date);
         };
-
         window.addEventListener("customShowMore", handler);
         return () => window.removeEventListener("customShowMore", handler);
     }, []);
-
   
     return (
-        // <div className={classnames(className)} style={wrapperStyle}>
         <div className={classnames(className)}>
             <Calendar<CalEvent>
                 localizer={localizer}
-                events={events}
+                views={viewsOption}
+                view={currentView ?? props.defaultView}
                 startAccessor={(event: CalEvent) => event.start}
                 endAccessor={(event: CalEvent) => event.end}
-                views={viewsOption}
                 allDayAccessor={(event: CalEvent) => event.allDay}
+                events={events}
                 eventPropGetter={eventPropGetter}
                 components={{
                     week: {
@@ -478,10 +545,7 @@ export default function MxCalendar(props: CalendarContainerProps): ReactElement 
                         event: CustomWeekEvent
                     },
                     dateHeader: ({ label, date }: { label: string, date: Date }) => (
-                        <CustomMonthDateHeader
-                            label={label}
-                            date={date}
-                        />
+                        CustomMonthDateHeader({ label, date })
                     ),
                     month: {
                         event: (calendarEventProps: { event: CalEvent }) => (
@@ -491,11 +555,10 @@ export default function MxCalendar(props: CalendarContainerProps): ReactElement 
                         />
                         )
                     },
-                    dateCellWrapper: QuarterDateCellWrapper, 
+                    dateCellWrapper: customDateCellWrapper, 
                 }}
                 formats={formats}
                 toolbar={false}
-                view={currentView ?? props.defaultView}
                 date={props.dateExpression?.value ?? new Date()}
                 onView={(newView: "month" | "week" | "quarter") => {
                     props.viewAttribute?.setValue?.(newView);
@@ -517,7 +580,7 @@ export default function MxCalendar(props: CalendarContainerProps): ReactElement 
                 popup={false}
                 drilldownView={null}
                 dayLayoutAlgorithm="no-overlap"
-                scrollToTime={new Date(1970, 1, 1, 6, 0, 0)} // Scroll to 6am, the date does not matter here, just need a date with the time that you want 
+                // scrollToTime={new Date(1970, 1, 1, 6, 0, 0)} // Scroll to 6am, the date does not matter here, just need a date with the time that you want 
             />
         </div>
     );
